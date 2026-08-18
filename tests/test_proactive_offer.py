@@ -1,3 +1,4 @@
+import random
 import sys
 import time
 import unittest
@@ -58,17 +59,40 @@ class ProactiveOfferFallbackTests(unittest.TestCase):
 
 class FormatGreetingTests(unittest.TestCase):
     def test_greeting_with_report(self):
-        message = format_greeting("Sales", "Exec Dashboard", 151091, 0)
-        self.assertIn("Greetings!", message)
+        message = format_greeting(
+            "Sales", "Exec Dashboard", 151091, 0, rng=random.Random(0)
+        )
         self.assertIn("Exec Dashboard", message)
         self.assertIn("Sales", message)
         self.assertIn("151.1s", message)
+        self.assertTrue(message.rstrip().endswith("?"))
         self.assertNotIn("other slow", message)
 
     def test_greeting_without_report_and_with_extras(self):
-        message = format_greeting("Sales", None, 42000, 2)
+        message = format_greeting("Sales", None, 42000, 2, rng=random.Random(0))
         self.assertNotIn("report", message)
         self.assertIn("2 other slow queries", message)
+
+    def test_greeting_varies_across_alerts(self):
+        # Different RNG states should be able to produce different openers so the
+        # alert doesn't read like the same canned sentence every time.
+        variants = {
+            format_greeting("Sales", None, 42000, 0, rng=random.Random(seed))
+            for seed in range(25)
+        }
+        self.assertGreater(len(variants), 1)
+
+    def test_greeting_always_surfaces_facts(self):
+        # Whatever variant is chosen, the model, duration and an offer of help
+        # must always be present.
+        for seed in range(25):
+            message = format_greeting(
+                "Sales", "Exec Dashboard", 151091, 0, rng=random.Random(seed)
+            )
+            self.assertIn("Sales", message)
+            self.assertIn("Exec Dashboard", message)
+            self.assertIn("151.1s", message)
+            self.assertIn("?", message)
 
 
 if __name__ == "__main__":

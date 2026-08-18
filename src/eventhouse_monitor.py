@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -167,20 +168,62 @@ SemanticModelLogs
 """.strip()
 
 
+_GREETING_OPENERS = (
+    "Greetings!",
+    "Hi there —",
+    "Hey!",
+    "Hello!",
+    "👋 Quick heads-up —",
+    "Just flagging something —",
+    "Heads up —",
+)
+
+# Each observation is formatted with ``seconds`` (float), ``source`` (possibly
+# empty report prefix) and ``model``. All must surface the duration in seconds
+# and the model name so no variant drops the key facts.
+_GREETING_OBSERVATIONS = (
+    "I noticed a sub-optimal query (took {seconds:.1f}s) originating from "
+    "{source}the **{model}** semantic model.",
+    "I spotted a slow query — {seconds:.1f}s — coming from {source}the "
+    "**{model}** semantic model.",
+    "One of the queries against {source}the **{model}** semantic model just ran "
+    "long, taking {seconds:.1f}s.",
+    "A query on {source}the **{model}** semantic model took {seconds:.1f}s to "
+    "finish — a little slower than ideal.",
+)
+
+_GREETING_OFFERS = (
+    "Would you like some help troubleshooting and optimizing it?",
+    "Want me to dig in and suggest a few optimizations?",
+    "Happy to help you speed it up — want me to take a look?",
+    "Shall I take a closer look and recommend some fixes?",
+    "Want a hand tuning it?",
+)
+
+
 def format_greeting(
     model_name: str,
     report_name: Optional[str],
     duration_ms: int,
     extra_count: int = 0,
+    rng: Optional[random.Random] = None,
 ) -> str:
-    """Casual, conversational opener that offers optimization help."""
+    """Casual, conversational opener that offers optimization help.
+
+    The opener, the way the slow query is described, and the offer of help are
+    each chosen at random from a small pool so the proactive alert doesn't read
+    like the same canned sentence every time. Every variant still surfaces the
+    same facts (model, report, duration) and ends with an offer of help. Pass a
+    seeded ``rng`` (``random.Random``) for deterministic output in tests."""
+    picker = rng or random
     seconds = int(duration_ms) / 1000
     source = f"the **{report_name}** report and " if report_name else ""
-    message = (
-        f"Greetings! I noticed a sub-optimal query (took {seconds:.1f}s) originating from "
-        f"{source}the **{model_name}** semantic model. "
-        "Would you like some help troubleshooting and optimizing it?"
+    opener = picker.choice(_GREETING_OPENERS)
+    observation = picker.choice(_GREETING_OBSERVATIONS).format(
+        seconds=seconds, source=source, model=model_name
     )
+    offer = picker.choice(_GREETING_OFFERS)
+    message = f"{opener} {observation} {offer}"
     if extra_count > 0:
         noun = "query" if extra_count == 1 else "queries"
         verb = "was" if extra_count == 1 else "were"

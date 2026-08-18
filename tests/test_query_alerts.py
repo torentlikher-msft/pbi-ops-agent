@@ -52,9 +52,8 @@ class RunQueryAlertPollTests(unittest.IsolatedAsyncioTestCase):
         send.assert_awaited_once()
         user_id, greeting, pending = send.await_args.args
         self.assertEqual(user_id, "user-a")
-        self.assertIn("Greetings!", greeting)
         self.assertIn("Sales", greeting)
-        self.assertIn("help", greeting.lower())
+        self.assertIn("?", greeting)
         self.assertEqual(pending["model"], "Sales")
         self.assertEqual(pending["eventText"], "EVALUATE Sales")
         self.assertEqual(pending["durationMs"], 42000)
