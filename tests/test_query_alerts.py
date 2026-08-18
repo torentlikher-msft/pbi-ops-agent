@@ -131,6 +131,26 @@ class RunQueryAlertPollTests(unittest.IsolatedAsyncioTestCase):
         store.set_last_query_alert.assert_not_awaited()
         store.set_monitor_watermark.assert_not_awaited()
 
+    async def test_partial_send_failure_still_advances_watermark(self):
+        # A persistently-unreachable recipient must not freeze the monitor
+        # watermark and replay the same slow query to reachable recipients on
+        # every poll (the "same message every 15 minutes" storm).
+        monitor = AsyncMock()
+        monitor.poll.return_value = [_result(user_ids=["good", "bad"])]
+        store = _store()
+
+        async def send(user_id, greeting, pending):
+            if user_id == "bad":
+                raise RuntimeError("teams down")
+
+        sent = await run_query_alert_poll(monitor, store, AsyncMock(), 900, send)
+
+        self.assertEqual(sent, 1)
+        store.set_last_query_alert.assert_awaited_once_with(
+            "monitor-key", "good", unittest.mock.ANY
+        )
+        store.set_monitor_watermark.assert_awaited_once()
+
     async def test_notify_model_owner_resolves_recipients(self):
         monitor = AsyncMock()
         monitor.poll.return_value = [
