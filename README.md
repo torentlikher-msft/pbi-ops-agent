@@ -1,4 +1,7 @@
 # Power BI Ops Agent — Proactive Operations
+> This project is being provided as a Proof of Concept.  Please test thoroughly.
+
+![alt text](OpsDemo.gif)
 
 Adds an **outbound / proactive** channel to your existing Azure AI Foundry agent.
 An HTTP `POST /api/notify` triggers the agent to message a specific Teams user
