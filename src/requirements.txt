@@ -1,0 +1,7 @@
+azure-functions>=1.21.0
+azure-identity>=1.19.0
+azure-data-tables>=12.5.0
+botbuilder-core==4.16.2
+botbuilder-schema==4.16.2
+botbuilder-integration-aiohttp==4.16.2
+aiohttp==3.10.5

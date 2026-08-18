@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "b6f1e2a4-7c3d-4e58-9a1b-2c3d4e5f6a7b",
+  "packageName": "com.contoso.pbiopsbot",
+  "developer": {
+    "name": "Contoso Data Platform",
+    "websiteUrl": "https://example.com",
+    "privacyUrl": "https://example.com/privacy",
+    "termsOfUseUrl": "https://example.com/terms"
+  },
+  "name": {
+    "short": "PBI Ops Agent",
+    "full": "Power BI Ops Agent"
+  },
+  "description": {
+    "short": "Proactive Power BI optimization guidance.",
+    "full": "Receives operations triggers and proactively delivers Power BI semantic model optimization guidance from the Foundry agent, with follow-up Q&A."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#0F6CBD",
+  "bots": [
+    {
+      "botId": "717de829-3e58-42c5-af5b-8d68a5d644cc",
+      "scopes": ["personal"],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["token.botframework.com", "smba.trafficmanager.net"]
+}
