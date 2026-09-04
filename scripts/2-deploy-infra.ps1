@@ -7,15 +7,15 @@
 #>
 [CmdletBinding()]
 param(
-  [string] $ResourceGroup = "rg-pbi_ops_agent",
   [string] $BaseName = "pbiops",
-
+  
+  [Parameter(Mandatory = $true)] [string] $ResourceGroup,
   [Parameter(Mandatory = $true)] [string] $BotAppId,
   [Parameter(Mandatory = $true)] [string] $BotAppTenantId,
   [Parameter(Mandatory = $true)] [string] $BotAppPassword,
 
-  [string] $FoundryProjectEndpoint = "https://data-architect-project-resource.services.ai.azure.com/api/projects/data-architect-project",
-  [string] $FoundryAgentName = "data-architect-agent",
+  [string] $FoundryProjectEndpoint = "https://pbi-ops-project-resource.services.ai.azure.com/api/projects/pbi-ops-project",
+  [string] $FoundryAgentName = "pbi-ops-agent",
 
   [string] $TeamsAppExternalId = "b6f1e2a4-7c3d-4e58-9a1b-2c3d4e5f6a7b",
   [string] $ServiceUrlDefault = "https://smba.trafficmanager.net/amer/",

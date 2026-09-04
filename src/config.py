@@ -77,8 +77,10 @@ class Config:
                 "https://api.fabric.microsoft.com/Dataset.ReadWrite.All",
                 "https://api.fabric.microsoft.com/Report.Read.All",
                 "https://api.fabric.microsoft.com/SemanticModel.Read.All",
+                "https://api.fabric.microsoft.com/SemanticModel.ReadWrite.All",
                 "https://api.fabric.microsoft.com/SemanticModel.Execute.All",
                 "https://api.fabric.microsoft.com/Workspace.Read.All",
+                "https://api.fabric.microsoft.com/Catalog.Read.All",
                 "offline_access",
             ]
         ),

@@ -230,15 +230,82 @@ below — first:
 
 | Prerequisite | Created by | Notes |
 |---|---|---|
-| **Azure AI Foundry** project/resource + published prompt agent | **You / your AI team — NOT this repo** | The agent (`FOUNDRY_AGENT_NAME`, default `data-architect-agent`) and its project endpoint (`FOUNDRY_PROJECT_ENDPOINT`) are *inputs* to Bicep. Provision the Foundry resource, project, agent, and any toolbox/skills separately in Azure AI Foundry. |
-| **App registration + service principal** ("PBI Ops Bot") | `scripts/1-create-app-registration.ps1` (skip if you already have one) | One single-tenant app reg is reused for Bot auth, Microsoft Graph, Foundry data plane, Fabric APIs, and Power BI REST. Requires rights to create app regs **and** grant admin consent. |
+| **Azure AI Foundry** project/resource + published prompt agent | Manual, in Azure and Foundry Portal | The agent (`FOUNDRY_AGENT_NAME`, default `data-architect-agent`) and its project endpoint (`FOUNDRY_PROJECT_ENDPOINT`) are *inputs* to Bicep. See "Azure AI Foundry setup (create project + agent)" below for explicit steps — resource, project, model, agent, and its Power BI skills + MCP tools. |
+| **App registration + service principal** "power bi mcp" | Manual, in Azure Portal | Needed for Authenticating to Fabric and using Power BI APIs |
+| **App registration + service principal** "fabric core mcp" | Manual, in Azure Portal | Needed for authenticating to Fabric and using Fabric APIs |
+| **App registration + service principal** "PBI Ops Bot" | `scripts/1-create-app-registration.ps1` (skip if you already have one) | One single-tenant app reg is reused for Bot auth, Microsoft Graph, Foundry data plane, Fabric APIs, and Power BI REST. Requires rights to create app regs **and** grant admin consent. **"Allow public client flows" must be enabled** (`isFallbackPublicClient=true`) — the bot's device-code sign-in needs a public-client (`appidacr=0`) token or the Power BI MCP rejects it and Teams sign-in loops. `scripts/1` sets this automatically. |
 | **Foundry RBAC** for the app registration | `scripts/4-foundry-role-and-teams-package.ps1` | Grants *Azure AI Developer* (+ *Cognitive Services User*) on the **existing** Foundry resource so the bot can call the agent. |
 | **Teams app package (zip)** published to the org catalog | `scripts/4-...ps1` builds it; an **admin** uploads it | Required for proactive delivery (Graph auto-installs the app for target users). See "Manual steps that need an admin". |
-| **Fabric-specific configuration** | **Manual, in Fabric/Power BI** | See "Fabric configuration" below — needed only for the slow-query alerts feature. |
+| **Fabric-specific configuration** | Manual, in Fabric | See "Fabric configuration" |
 
 > Only **one** service principal (the app registration) is yours to manage. The
 > Function App also gets a **system-assigned managed identity** automatically
 > (used only for Storage RBAC) — you don't create or manage that one.
+
+### Azure AI Foundry setup (create project + agent)
+
+This repo **references an existing Foundry resource** — it does not provision one.
+Create the resource, project, and agent yourself (portal steps below), then pass
+the resulting endpoint + agent name into `scripts/2-deploy-infra.ps1` as
+`-FoundryProjectEndpoint` / `-FoundryAgentName`. These are the defaults the deploy
+script ships with, so match them (or override the parameters):
+
+- `FOUNDRY_PROJECT_ENDPOINT` = `https://<account>.services.ai.azure.com/api/projects/<project>`
+- `FOUNDRY_AGENT_NAME` = `pbi-ops-project`
+
+**1. Create the Foundry resource (AI Services / Foundry account).**
+In the [Azure AI Foundry portal](https://ai.azure.com) create (or reuse) a
+**Foundry resource** in the same tenant and (ideally) the same region as the bot
+(`eastus2` for the reference instance).
+
+**2. Create a project.**
+In the Foundry Portal, create a **project** (e.g. `pbi-ops-project`). The
+project **endpoint** shown on its overview page is your `FOUNDRY_PROJECT_ENDPOINT`
+— it must end in `/api/projects/<project>`.
+
+**3. Deploy a model.**
+Go to **View Deployments > Deployed models > Deploy a base model**, and deploy the chat model the agent will use (e.g. a
+GPT-5.4 deployment). Note the **deployment name** — you'll select it
+when creating the agent.
+
+**4. Create the agent.**
+Go to **Agents > New agent > Build an Agent** and give it a name, (e.g. `pbi-ops-agent`)
+
+**5. Load the agent's Power BI skills and MCP tools.**
+Add the agent's knowledge and tools so it can actually reason over Power BI:
+- **Power BI skills / knowledge (Optional)** — Go to **Tools > Skills > New skill > Upload skill** and attach the semantic-model-authoring skill found here: https://github.com/microsoft/skills-for-fabric/tree/main/skills/semantic-model-authoring
+
+  This will provide the agent with  documentation,
+  best-practice guidance, and any DAX/optimization playbooks to
+  ground on.
+- **MCP tools** — Go to **Tools > Tools > Connect a tool > Custom > Model Context Protocol** 
+  
+  - Configure the Power BI MCP endpoint URL (https://api.fabric.microsoft.com/v1/mcp/powerbi) and **OAuth Identity Passthrough** auth in Foundry's MCP tool dialog.  
+  For Scopes, use: *https://api.fabric.microsoft.com/SemanticModel.Read.All https://api.fabric.microsoft.com/SemanticModel.Execute.All https://api.fabric.microsoft.com/Item.Read.All https://api.fabric.microsoft.com/Workspace.Read.All*
+  
+    Finally, click **Use in an agent** and select your agent.
+  
+  - Configure the Fabric Core MCP endpoint URL (https://api.fabric.microsoft.com/v1/mcp/core) and **OAuth Identity Passthrough** auth in Foundry's MCP tool dialog. 
+  For Scopes, use: https://api.fabric.microsoft.com/.default
+
+    Finally, click **Use in an agent** and select your agent.
+
+- **Create a toolbox** — Go to **Tools > Toolboxes > create toolbox**
+  Add the 2 MCP Servers (if applicable) and skills to the toolbox. 
+
+**6. Add the agent instructions.**
+Use the agent-instructions.md file to populate the agent instructions in Foundry.
+
+**7. Grant the app registration data-plane access.**
+Run `scripts/4-foundry-role-and-teams-package.ps1` with `-FoundryResourceId` set to
+the **account** id from step 1. It assigns *Azure AI Developer* + *Cognitive
+Services User* to the app registration's service principal so the bot can create
+runs against the agent.
+
+**8. Smoke-test the agent** in the Foundry playground before deploying the bot, so
+you know the model, skills, and MCP tools respond correctly. The bot layer only
+forwards prompts — if the agent is misconfigured here, `/api/notify` will surface
+the failure.
 
 ### Fabric configuration (for slow-query alerts)
 
@@ -271,9 +338,7 @@ az account set --subscription "<your subscription>"
 ./scripts/1-create-app-registration.ps1      # prints botAppId / botAppTenantId / botAppPassword
 
 # 2) Infrastructure
-./scripts/2-deploy-infra.ps1 `
-  -BotAppId <appId> -BotAppTenantId <tenantId> -BotAppPassword <secret> `
-  -NotifyApiKey "<strong-random-string>"
+./scripts/2-deploy-infra.ps1 -ResourceGroup <yourResourceGroupName> -BotAppId <appId> -BotAppTenantId <tenantId> -BotAppPassword <secret> -NotifyApiKey "<strong-random-string>"
 # FoundryProjectEndpoint + FoundryAgentName default to the data-architect agent.
 # note the functionAppName output
 
@@ -281,8 +346,8 @@ az account set --subscription "<your subscription>"
 ./scripts/3-deploy-function.ps1 -FunctionAppName <functionAppName>
 
 # 4) Grant Foundry data-plane role + build Teams package
-./scripts/4-foundry-role-and-teams-package.ps1 `
-  -BotAppId <appId> -FoundryResourceId "<Foundry project/account resource id>"
+# IMPORTANT: Make sure to update the botId in manifest.json to reflect your actual bot id
+./scripts/4-foundry-role-and-teams-package.ps1 -ResourceGroup <yourResourceGroupName> -BotAppId <appId> -FoundryResourceId "<Foundry project/account resource id>"
 ```
 
 ## Manual steps that need an admin (org-level)
@@ -297,7 +362,7 @@ az account set --subscription "<your subscription>"
    The manifest `id` must equal `TEAMS_APP_EXTERNAL_ID`.
 3. **Foundry role**: the app registration needs *Azure AI Developer* on the
    Foundry project (step 4).
-4. **Fabric/Power BI tenant settings** (only for slow-query alerts): in the
+4. **Fabric/Power BI tenant settings**: in the
    **Fabric Admin portal → Developer settings**, enable *Service principals can
    use Fabric APIs* and *Service principals can use Power BI APIs* (org-wide or
    for a group containing the app registration), and add the app registration as
@@ -308,13 +373,6 @@ az account set --subscription "<your subscription>"
 ```powershell
 az ad user show --id "user@contoso.com" --query id -o tsv
 ```
-
-## Local testing
-
-Copy `src/local.settings.json.example` → `src/local.settings.json`, fill values,
-then `cd src && func start`. Use the Bot Framework Emulator against
-`http://localhost:7071/api/messages`. (Proactive cold-start needs real Teams +
-Graph consent.)
 
 ## Security notes
 

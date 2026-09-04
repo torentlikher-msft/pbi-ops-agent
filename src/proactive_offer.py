@@ -47,9 +47,28 @@ def grounded_prompt(pending: dict) -> str:
     duration_ms = pending.get("durationMs")
     duration = f"{int(duration_ms) / 1000:.1f}s" if duration_ms else "an extended time"
     event_text = (pending.get("eventText") or "").strip()
+
+    # These GUIDs come straight from the monitoring log, so the agent can use them
+    # directly and must not resolve the (possibly ambiguous) name to an id.
+    id_lines = []
+    if pending.get("modelId"):
+        id_lines.append(f"- semantic model artifactId: {pending['modelId']}")
+    if pending.get("workspaceId"):
+        id_lines.append(f"- workspace id: {pending['workspaceId']}")
+    if pending.get("reportId"):
+        id_lines.append(f"- report id: {pending['reportId']}")
+    ids_block = ""
+    if id_lines:
+        ids_block = (
+            "\n\nUse these exact identifiers with the Power BI tools \u2014 they are "
+            "from the monitoring log, so do NOT call find_semantic_model or any "
+            "name-lookup tool to resolve them:\n" + "\n".join(id_lines) + "\n"
+        )
     return (
         f"A slow Power BI query (took {duration}) was captured from {source}the "
-        f"'{model}' semantic model.\n\n"
+        f"'{model}' semantic model."
+        + ids_block
+        + "\n\n"
         "IMPORTANT: The query below is the DAX that the Power BI engine "
         "auto-generated for a report visual — it is NOT a query the user wrote by "
         "hand. Do not treat it as the user's literal query or critique its DAX style. "
