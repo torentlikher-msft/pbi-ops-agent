@@ -95,10 +95,19 @@ class EventhouseMonitor:
             f'{query_uri}|{database}|{monitor["name"]}'.encode()
         ).hexdigest()[:32]
         saved_watermark = await state_store.get_monitor_watermark(key)
-        fallback = datetime.now(timezone.utc) - timedelta(minutes=self._lookback_minutes)
-        cutoff = _parse_timestamp(saved_watermark) or fallback
+        if _parse_timestamp(saved_watermark) is not None:
+            # Use the stored Kusto timestamp verbatim. Parsing it into a Python
+            # datetime truncates Kusto's 100ns precision to microseconds, so
+            # `Timestamp > cutoff` would keep re-matching the boundary row and
+            # re-alert the same slow query every cooldown window.
+            cutoff_value = saved_watermark
+        else:
+            fallback = datetime.now(timezone.utc) - timedelta(minutes=self._lookback_minutes)
+            cutoff_value = fallback.astimezone(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            )
         duration_ms = int(monitor.get("durationMs", self._default_duration_ms))
-        query = self._build_query(cutoff, duration_ms)
+        query = self._build_query(cutoff_value, duration_ms)
         payload = {"db": database, "csl": query}
         url = f'{query_uri.rstrip("/")}/v1/rest/query'
         async with session.post(
@@ -153,8 +162,7 @@ class EventhouseMonitor:
         monitor["_resolvedQueryUri"] = query_uri
         return query_uri, monitor["kqlDatabaseId"]
 
-    def _build_query(self, cutoff: datetime, duration_ms: int) -> str:
-        cutoff_value = cutoff.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    def _build_query(self, cutoff_value: str, duration_ms: int) -> str:
         return f"""
 SemanticModelLogs
 | where Timestamp > datetime({cutoff_value})
