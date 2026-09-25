@@ -106,6 +106,7 @@ async def _build_offer(owner_resolver, result, events):
     pending = {
         "model": offending.get("ModelName") or offending.get("ModelId"),
         "modelId": offending.get("ModelId"),
+        "workspaceId": result.workspace_id,
         "report": report_name,
         "reportId": report_id,
         "durationMs": duration_ms,

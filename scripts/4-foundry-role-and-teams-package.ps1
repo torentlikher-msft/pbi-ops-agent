@@ -7,8 +7,9 @@
 #>
 [CmdletBinding()]
 param(
+  [Parameter(Mandatory = $true)] [string] $ResourceGroup,
   [Parameter(Mandatory = $true)] [string] $BotAppId,
-  [string] $FoundryResourceId = "/subscriptions/2bc549bc-9017-4a47-a8e0-12787c4bf604/resourceGroups/rg-pbi_ops_agent/providers/Microsoft.CognitiveServices/accounts/data-architect-project-resource"
+  [Parameter(Mandatory = $true)] [string] $FoundryResourceId
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,7 @@ foreach ($role in @("Azure AI Developer", "Cognitive Services User")) {
 
 # The app code reads/writes conversation state in Table Storage AS the service
 # principal, so it needs table data access on the Functions storage account.
-$storageId = az storage account list -g rg-pbi_ops_agent --query "[?starts_with(name,'pbiops')].id | [0]" -o tsv
+$storageId = az storage account list -g $ResourceGroup --query "[?starts_with(name,'pbiops')].id | [0]" -o tsv
 if ($storageId) {
   Write-Host "Assigning 'Storage Table Data Contributor' to the SP on $storageId ..."
   az role assignment create `

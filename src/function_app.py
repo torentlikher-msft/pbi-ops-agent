@@ -37,6 +37,9 @@ from semantic_model_owners import SemanticModelOwnerResolver
 from state_store import StateStore
 
 logging.basicConfig(level=logging.INFO)
+# basicConfig is a no-op once the Functions host attaches a root handler, so set
+# the root level explicitly or app INFO logs never reach Application Insights.
+logging.getLogger().setLevel(logging.INFO)
 log = logging.getLogger("host")
 
 CONFIG = Config()

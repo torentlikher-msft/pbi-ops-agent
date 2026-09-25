@@ -79,7 +79,9 @@ class PbiOpsBot(TeamsActivityHandler):
 
         previous = await self.store.get_prev_response(conversation_id)
         await turn_context.send_activity(Activity(type=ActivityTypes.typing))
-        response_id, answer = await self.foundry.ask_as_user(text, token, previous)
+        response_id, answer = await self.foundry.ask_as_user(
+            text, token, previous, include_resolver=not grounded_text
+        )
         if response_id:
             await self.store.set_prev_response(conversation_id, response_id)
         await turn_context.send_activity(answer)

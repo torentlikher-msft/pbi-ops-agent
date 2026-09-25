@@ -24,6 +24,10 @@ Write-Host "  appId: $appId"
 # Service principal (required for the bot + role assignments)
 az ad sp create --id $appId | Out-Null
 
+# Allow public client flows so the device-code sign-in yields an appidacr=0
+# Fabric token (the Power BI MCP rejects confidential-client tokens).
+az ad app update --id $appId --set isFallbackPublicClient=true | Out-Null
+
 # Client secret (1 year)
 $secret = az ad app credential reset --id $appId --years 1 --display-name "func" | ConvertFrom-Json
 $clientSecret = $secret.password
@@ -43,6 +47,29 @@ foreach ($perm in $needed) {
   if (-not $role) { throw "Could not find Graph app role '$perm'." }
   Write-Host "  adding Graph permission $perm ($($role.id))"
   az ad app permission add --id $appId --api $graphSpId --api-permissions "$($role.id)=Role" | Out-Null
+}
+
+# Delegated Fabric / Power BI scopes (resource: Power BI Service). The bot injects
+# the user's Fabric token into the Foundry MCP tools, so these must be consented.
+$pbiSpId = "00000009-0000-0000-c000-000000000000"
+$pbi = az ad sp show --id $pbiSpId | ConvertFrom-Json
+$fabricScopes = @(
+  "Item.Read.All",
+  "Item.Execute.All",
+  "Dataset.Read.All",
+  "Dataset.ReadWrite.All",
+  "Report.Read.All",
+  "SemanticModel.Read.All",
+  "SemanticModel.ReadWrite.All",
+  "SemanticModel.Execute.All",
+  "Workspace.Read.All",
+  "Catalog.Read.All"
+)
+foreach ($scopeValue in $fabricScopes) {
+  $scope = $pbi.oauth2PermissionScopes | Where-Object { $_.value -eq $scopeValue }
+  if (-not $scope) { throw "Could not find Power BI Service delegated scope '$scopeValue'." }
+  Write-Host "  adding Fabric delegated scope $scopeValue ($($scope.id))"
+  az ad app permission add --id $appId --api $pbiSpId --api-permissions "$($scope.id)=Scope" | Out-Null
 }
 
 Write-Host "Granting admin consent (requires elevated rights)..."

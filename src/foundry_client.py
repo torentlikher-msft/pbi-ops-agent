@@ -295,9 +295,14 @@ class FoundryAgent:
         user_text: str,
         fabric_token: str,
         previous_response_id: Optional[str] = None,
+        include_resolver: bool = True,
     ) -> Tuple[Optional[str], str]:
         """Run the agent on behalf of the signed-in user, using the project
-        toolbox (per-user MCP + skills). Returns ``(response_id, answer_text)``."""
+        toolbox (per-user MCP + skills). Returns ``(response_id, answer_text)``.
+
+        When ``include_resolver`` is False the name->GUID ``find_semantic_model``
+        tool is omitted (used when the caller already supplies the GUIDs, e.g. a
+        grounded slow-query analysis) so the agent can't loop on name resolution."""
         token = await self._token()
         headers = self._headers(token)
         agent_def = await self._get_agent_def(headers)
@@ -360,40 +365,40 @@ class FoundryAgent:
                 }
             )
 
-        # Always give the agent a way to resolve model/workspace names to GUIDs
-        # (the MCP tools require an artifactId). Fulfilled via the Fabric REST API
-        # with the user's own token, so per-user access is enforced.
-        instructions += (
-            "\n\n# Resolving names to IDs\n"
-            "The Power BI tools require an `artifactId` (GUID). When the user names a "
-            "semantic model or workspace, FIRST call `find_semantic_model` with the "
-            "workspace and/or model name to get the exact `artifactId`, then use that "
-            "GUID with the MCP tools. Never pass a name where a GUID is required."
-        )
-        tools.append(
-            {
-                "type": "function",
-                "name": "find_semantic_model",
-                "description": (
-                    "Resolve a Power BI semantic model and/or workspace name to its "
-                    "GUID(s). Returns matching models with their artifactId."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "workspace": {
-                            "type": "string",
-                            "description": "Workspace name (optional)",
+        # Give the agent a way to resolve model/workspace names to GUIDs (the MCP
+        # tools require an artifactId). Skipped when the caller already has the GUIDs.
+        if include_resolver:
+            instructions += (
+                "\n\n# Resolving names to IDs\n"
+                "The Power BI tools require an `artifactId` (GUID). When the user names a "
+                "semantic model or workspace, FIRST call `find_semantic_model` with the "
+                "workspace and/or model name to get the exact `artifactId`, then use that "
+                "GUID with the MCP tools. Never pass a name where a GUID is required."
+            )
+            tools.append(
+                {
+                    "type": "function",
+                    "name": "find_semantic_model",
+                    "description": (
+                        "Resolve a Power BI semantic model and/or workspace name to its "
+                        "GUID(s). Returns matching models with their artifactId."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "workspace": {
+                                "type": "string",
+                                "description": "Workspace name (optional)",
+                            },
+                            "model": {
+                                "type": "string",
+                                "description": "Semantic model name (optional)",
+                            },
                         },
-                        "model": {
-                            "type": "string",
-                            "description": "Semantic model name (optional)",
-                        },
+                        "required": [],
                     },
-                    "required": [],
-                },
-            }
-        )
+                }
+            )
 
         body = {
             "model": agent_def["model"],
@@ -419,7 +424,8 @@ class FoundryAgent:
             status, data, detail = await self._post(headers, body)
             if status != 200:
                 log.error("Foundry responses error %s: %s", status, detail)
-                return last_id, (
+                # Return None so the caller doesn't persist an incomplete thread.
+                return None, (
                     _error_message(detail)
                     or f"Sorry \u2014 the agent call failed ({status})."
                 )
@@ -442,6 +448,18 @@ class FoundryAgent:
                 len(calls),
                 [i.get("type") for i in data.get("output", [])],
             )
+            mcp_errors = [
+                {"tool": i.get("name"), "error": i.get("error")}
+                for i in data.get("output", [])
+                if i.get("type") == "mcp_call" and i.get("error")
+            ]
+            if mcp_errors:
+                log.info("ask_as_user mcp_errors=%s", mcp_errors)
+            if calls:
+                log.info(
+                    "ask_as_user calls=%s",
+                    [(fc.get("name"), (fc.get("arguments") or "")[:200]) for fc in calls],
+                )
             if not calls:
                 return last_id, (_extract_text(data) or "(the agent returned no text)")
             outputs = []
@@ -458,6 +476,9 @@ class FoundryAgent:
                     content = await self._read_skill_file(
                         token, args.get("name", ""), args.get("path", "SKILL.md")
                     )
+                log.info(
+                    "ask_as_user call=%s -> %s", fc.get("name"), (content or "")[:300]
+                )
                 outputs.append(
                     {
                         "type": "function_call_output",
@@ -473,7 +494,9 @@ class FoundryAgent:
                 "store": True,
             }
 
-        return last_id, "(the agent kept loading skills; stopped after several rounds)"
+        # Loop exhausted with tool calls still pending; returning None avoids
+        # persisting a response id whose function calls were never answered.
+        return None, "(the agent kept working but didn't finish; please rephrase or try again)"
 
     async def classify_reply(self, user_text: str) -> str:
         """Classify a reply to a proactive help offer using the model (no tools).
